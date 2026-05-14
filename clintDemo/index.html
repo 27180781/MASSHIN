@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Socket.IO chat</title>
+    <style>
+      body {
+        margin: 0;
+        padding-bottom: 3rem;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+      }
+
+      #form {
+        background: rgba(0, 0, 0, 0.15);
+        padding: 0.25rem;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        height: 3rem;
+        box-sizing: border-box;
+        backdrop-filter: blur(10px);
+      }
+      #input {
+        border: none;
+        padding: 0 1rem;
+        flex-grow: 1;
+        border-radius: 2rem;
+        margin: 0.25rem;
+      }
+      #input:focus {
+        outline: none;
+      }
+      #form > button {
+        background: #333;
+        border: none;
+        padding: 0 1rem;
+        margin: 0.25rem;
+        border-radius: 3px;
+        outline: none;
+        color: #fff;
+      }
+
+      #messages {
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+      }
+      #messages > li {
+        padding: 0.5rem 1rem;
+      }
+      #messages > li:nth-child(odd) {
+        background: #efefef;
+      }
+      #game button {
+        background-color: aqua;
+        margin: 50px 50px 0 50px;
+      }
+      #game {
+        padding: 50px 50px 30px 50px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- <label for="room">room</label> -->
+    <p id="room" autocomplete="off" />
+    <form id="game" action="">
+      <label for="phone">phone</label>
+      <input id="phone" autocomplete="off" />
+      <br />
+      <br />
+      <label for="gameId">game name</label>
+      <input id="gameId" autocomplete="off" />
+      <br />
+      <button>Send</button>
+    </form>
+    <form id="game" action="">
+      <label for="vote">vote</label>
+      <input id="vote" autocomplete="off" />
+
+      <button>Send</button>
+    </form>
+    <button id="disconnect">disconnect</button>
+    <ul id="players">
+      players:
+    </ul>
+    <ul id="messages">
+      messages:
+    </ul>
+    <ul id="voting">
+      voting:
+    </ul>
+    <form id="form" action="">
+      <input id="input" autocomplete="off" /><button>Send</button>
+    </form>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      // var socket = io("https://mashiah.clap.co.il", {
+      //   // "force new connection": true,
+      //   reconnectionAttempts: "Infinity",
+      //   timeout: 10000,
+      //   transports: ["websocket"],
+      // });
+      var socket = io("/", {
+        // reconnectionAttempts: "Infinity",
+        // timeout: 10000,
+        // transports: ["websocket"],
+      });
+      var players = document.getElementById("players");
+      var messages = document.getElementById("messages");
+      var form = document.getElementById("form");
+      var game = document.getElementById("game");
+      var room = document.getElementById("room");
+
+      game.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (phone.value && gameId.value) {
+          socket.emit("join/room", {
+            phone: phone.value,
+            gameId: gameId.value,
+          });
+        }
+      });
+      // socket.on("connect", () => {
+      socket.emit("create-room", {
+        gameId: 1011,
+      });
+      // console.log(123); // x8WIv7-mJelg7on_ALbx
+      // console.log(socket.id); // x8WIv7-mJelg7on_ALbx
+      // });
+
+      socket.on("join/room", function (msg) {
+        console.log("join/room", msg);
+        var item = document.createElement("li");
+        item.textContent = msg;
+        players.appendChild(item);
+        window.scrollTo(0, document.body.scrollHeight);
+      });
+      socket.on("create-room", function (gameId) {
+        console.log("create-room", gameId);
+        var item = document.createElement("div");
+        item.textContent;
+        room.textContent = `room: ${gameId}`;
+        room.appendChild(item);
+      });
+      socket.on("voting", function (msg) {
+        console.log("game/voting", { ...msg });
+        var item = document.createElement("li");
+        item.textContent = `phone: ${msg.phone} vote: ${msg.vote} time: ${msg.time}`;
+        voting.appendChild(item);
+        window.scrollTo(0, document.body.scrollHeight);
+      });
+    </script>
+  </body>
+</html>

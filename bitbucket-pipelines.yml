@@ -1,0 +1,23 @@
+image: node:10.15.3
+
+pipelines:
+   default:
+       - step:
+             caches:
+                 - node
+             script: # Modify the commands below to build your repository.
+                 - npm --version
+       - step:
+             name: production
+             image: atlassian/default-image:latest
+             deployment: production
+             trigger: manual
+             script:
+                 - apt-get update && apt-get install -y rsync
+                 - rsync -azvP --rsh='ssh -p22' $BITBUCKET_CLONE_DIR/ $DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH
+                 - pipe: atlassian/ssh-run:0.2.6
+                   variables:
+                       SSH_USER: $DEPLOY_USER
+                       SERVER: $DEPLOY_HOST
+                       MODE: "command"
+                       COMMAND: ${DEPLOY_PATH}/deploy.sh
