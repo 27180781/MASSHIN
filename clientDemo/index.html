@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>Voting Bridge - Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: monospace;
+      background: #0d0d0d;
+      color: #e0e0e0;
+      padding: 24px;
+      min-height: 100vh;
+    }
+    h1 { color: #4ade80; margin-bottom: 24px; font-size: 1.4rem; }
+    h2 { color: #60a5fa; font-size: 1rem; margin-bottom: 12px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    input, button {
+      width: 100%;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: 4px;
+      border: 1px solid #444;
+      background: #111;
+      color: #e0e0e0;
+      font-family: monospace;
+      font-size: 0.9rem;
+    }
+    button {
+      background: #22c55e;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      border: none;
+    }
+    button:hover { background: #16a34a; }
+    button.secondary { background: #3b82f6; color: #fff; }
+    button.secondary:hover { background: #2563eb; }
+    button.danger { background: #ef4444; color: #fff; }
+
+    #log {
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px;
+      height: 300px;
+      overflow-y: auto;
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    .log-entry { margin-bottom: 4px; }
+    .log-vote { color: #4ade80; }
+    .log-join { color: #60a5fa; }
+    .log-error { color: #f87171; }
+    .log-info { color: #a3a3a3; }
+
+    .status {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+      margin-left: 6px;
+    }
+    .status.connected { background: #4ade80; }
+    #stats {
+      color: #a3a3a3;
+      font-size: 0.8rem;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🗳️ Voting Bridge - Demo
+    <span class="status" id="statusDot"></span>
+    <span id="statusText" style="font-size:0.8rem;color:#a3a3a3">מנותק</span>
+  </h1>
+
+  <div class="grid">
+    <!-- מערכת המשחק - מצטרפת לחדר -->
+    <div class="card">
+      <h2>🎮 מערכת המשחק (Socket Client)</h2>
+      <input id="gameId" value="1011" placeholder="Game ID (חדר)">
+      <button class="secondary" onclick="joinRoom()">הצטרף לחדר</button>
+      <div id="stats">הצבעות שהתקבלו: <b id="voteCount">0</b></div>
+    </div>
+
+    <!-- מערכת הטלפון - שולחת הצבעות -->
+    <div class="card">
+      <h2>📞 מערכת הטלפון (HTTP POST)</h2>
+      <input id="phone" value="0501234567" placeholder="מספר טלפון">
+      <input id="vote" value="1" placeholder="הצבעה">
+      <input id="playerName" value="ישראל ישראלי" placeholder="שם שחקן">
+      <button onclick="sendVote()">שלח הצבעה (POST)</button>
+      <button class="danger" onclick="sendBurst()">שלח 50 הצבעות מהירות 🔥</button>
+    </div>
+  </div>
+
+  <h2>לוג אירועים</h2>
+  <div id="log"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io("/", { transports: ["websocket"] });
+    let voteCount = 0;
+
+    // --- סטטוס חיבור ---
+    socket.on("connect", () => {
+      setStatus(true);
+      log("info", `מחובר · socket id: ${socket.id}`);
+    });
+    socket.on("disconnect", () => {
+      setStatus(false);
+      log("error", "מנותק מהשרת");
+    });
+
+    // --- האזנה לאירועים מהשרת ---
+    socket.on("voting", (data) => {
+      voteCount++;
+      document.getElementById("voteCount").textContent = voteCount;
+      log("vote", `הצבעה התקבלה | טלפון: ${data.phone} | הצבעה: ${data.vote} | שחקן: ${data.playerName || "-"}`);
+    });
+
+    socket.on("player/joined", (data) => {
+      log("join", `שחקן הצטרף: ${data.phone} לחדר ${data.gameId}`);
+    });
+
+    socket.on("room/joined", (data) => {
+      log("join", `הצטרפת לחדר ${data.gameId} · socket: ${data.socketId}`);
+    });
+
+    // --- פעולות ---
+    function joinRoom() {
+      const gameId = document.getElementById("gameId").value;
+      socket.emit("join/room", { gameId });
+      log("info", `שולח בקשת הצטרפות לחדר ${gameId}...`);
+    }
+
+    async function sendVote() {
+      const gameId = document.getElementById("gameId").value;
+      const phone = document.getElementById("phone").value;
+      const vote = document.getElementById("vote").value;
+      const playerName = document.getElementById("playerName").value;
+
+      try {
+        const res = await fetch("/game/voting", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ApiExtension: gameId, ApiPhone: phone, vote, playerName, ApiTime: Date.now() }),
+        });
+        const data = await res.json();
+        log("info", `POST /game/voting → ${JSON.stringify(data)}`);
+      } catch (e) {
+        log("error", `שגיאה: ${e.message}`);
+      }
+    }
+
+    async function sendBurst() {
+      const gameId = document.getElementById("gameId").value;
+      log("info", "שולח 50 הצבעות מהירות...");
+      for (let i = 0; i < 50; i++) {
+        fetch("/game/voting", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ApiExtension: gameId,
+            ApiPhone: `050${String(i).padStart(7, "0")}`,
+            vote: (i % 4) + 1,
+            playerName: `שחקן ${i}`,
+            ApiTime: Date.now(),
+          }),
+        });
+      }
+    }
+
+    // --- utils ---
+    function log(type, msg) {
+      const div = document.getElementById("log");
+      const el = document.createElement("div");
+      el.className = `log-entry log-${type}`;
+      el.textContent = `[${new Date().toLocaleTimeString("he")}] ${msg}`;
+      div.prepend(el);
+    }
+
+    function setStatus(connected) {
+      document.getElementById("statusDot").className = "status" + (connected ? " connected" : "");
+      document.getElementById("statusText").textContent = connected ? "מחובר" : "מנותק";
+    }
+  </script>
+</body>
+</html>

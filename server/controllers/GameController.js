@@ -1,64 +1,65 @@
-const ErrorService = require("../services/ErrorService");
 const chalk = require("chalk");
 
 class GameController {
-  async joinGame({ req, res }) {
-    console.log(chalk.bgGreen("joinGame"));
+  /**
+   * מקבל שחקן שמצטרף למשחק דרך מערכת הטלפון
+   * POST /game/join
+   * body: { ApiExtension (gameId), ApiPhone }
+   */
+  joinGame({ req, res }) {
     try {
-      // ApiExtension = gameId
-      const { ApiExtension, ApiDID, ApiPhone } = req.body;
+      const { ApiExtension, ApiPhone } = req.body;
 
-      console.log("joinGame", ApiPhone);
+      if (!ApiExtension || !ApiPhone) {
+        return res.status(400).json({ error: "Missing ApiExtension or ApiPhone" });
+      }
 
-      const socket = req.app.get("socket");
       const io = req.app.get("io");
+      const gameId = String(ApiExtension);
 
-      socket.join(+ApiExtension);
-      io.to(+ApiExtension).emit("join/room", { phone: ApiPhone });
-      return res.send("OK");
+      console.log(chalk.green(`[JOIN] phone=${ApiPhone} → room=${gameId}`));
+
+      // שידור לכל המאזינים בחדר הספציפי
+      io.to(gameId).emit("player/joined", { phone: ApiPhone, gameId });
+
+      return res.json({ ok: true });
     } catch (e) {
-      console.log(e);
-      return ErrorService.createError(
-        `Game Controller | joinGame`,
-        ErrorService.errors.generalError,
-        res
-      );
+      console.error(chalk.red("[joinGame error]"), e);
+      return res.status(500).json({ error: "Server error" });
     }
   }
-  async voting({ req, res }) {
-    console.log(chalk.bgGreen("voting"));
-    const io = req.app.get("io");
-    try {
-      // ApiExtension = gameId
-      const {
-        ApiExtension,
-        ApiDID,
-        vote,
-        ApiPhone,
-        gameId,
-        ApiTime,
-        playerName,
-      } = req.body;
 
-      if (!gameId) {
-        io.to(+ApiExtension).emit("join/room", ApiPhone);
-        return res.send("OK");
-      } else {
-        io.to(+gameId).emit("voting", {
-          vote,
-          phone: ApiPhone,
-          time: ApiTime,
-          playerName: playerName,
-        });
-        return res.send("OK");
+  /**
+   * מקבל הצבעה ומעביר אותה לחדר המתאים
+   * POST /game/voting
+   * body: { ApiExtension (gameId), ApiPhone, vote, ApiTime, playerName }
+   */
+  voting({ req, res }) {
+    try {
+      const { ApiExtension, ApiPhone, vote, ApiTime, playerName } = req.body;
+
+      if (!ApiExtension || !vote) {
+        return res.status(400).json({ error: "Missing ApiExtension or vote" });
       }
+
+      const io = req.app.get("io");
+      const gameId = String(ApiExtension);
+
+      console.log(chalk.cyan(`[VOTE] phone=${ApiPhone} vote=${vote} → room=${gameId}`));
+
+      // שידור רק לחדר הספציפי - מערכת המשחק מאזינה לחדר שלה
+      io.to(gameId).emit("voting", {
+        phone: ApiPhone,
+        vote,
+        time: ApiTime,
+        playerName,
+        gameId,
+      });
+
+      return res.json({ ok: true });
     } catch (e) {
-      console.log(e);
-      return ErrorService.createError(
-        `Game Controller | voting`,
-        ErrorService.errors.generalError,
-        res
-      );
+      console.error(chalk.red("[voting error]"), e);
+      return res.status(500).json({ error: "Server error" });
     }
   }
 }

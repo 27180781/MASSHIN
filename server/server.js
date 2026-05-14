@@ -1,38 +1,34 @@
 const express = require("express");
+const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const chalk = require("chalk");
-const routes = require("./routes/routes");
+const gameRoutes = require("./routes/gameRoutes");
 const Sockets = require("./sockets/main");
-const app = express();
+
 require("dotenv").config();
 
-app.use(cookieParser());
+const app = express();
 
-//TODO: UnComment to use cors
-var cors = require("cors");
-app.use(
-  cors({
-    origin: "*",
-    exposedHeaders: "Authorization",
-  })
-);
-
+// --- Middleware ---
+app.use(cors({ origin: "*", exposedHeaders: "Authorization" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// for dev UnComment this row
-app.use(express.static("clintDemo"));
+// --- Static demo client ---
+app.use(express.static("clientDemo"));
 
-app.use("/", routes);
+// --- Routes ---
+app.use("/game", gameRoutes);
 
-const port = process.env.PORT;
+// --- Health check ---
+app.get("/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
 
-const server = app.listen(port, () => {
-  console.log(
-    chalk.bgBlue(
-      `Server is listenning on port http://localhost:${chalk.bold(port)}`
-    )
-  );
+// --- Start ---
+const PORT = process.env.PORT || 3000;
+const server = app.listen(PORT, () => {
+  console.log(chalk.bgBlue(`\n🚀 Bridge server running on http://localhost:${chalk.bold(PORT)}\n`));
 });
 
+// --- Init Sockets ---
 Sockets(server, app);

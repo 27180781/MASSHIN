@@ -1,92 +1,78 @@
-const socket = require("socket.io");
+const { Server } = require("socket.io");
 const { instrument } = require("@socket.io/admin-ui");
+const chalk = require("chalk");
+const roomSocket = require("./roomSocket");
+const gameSocket = require("./gameSocket");
 
-const room = require("./roomSocket");
-const game = require("./gameSocket");
-// const app = require("../server");
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:5500",
+  "http://127.0.0.1:5500",
+  "http://127.0.0.1:5501",
+  "http://127.0.0.1:5502",
+  "https://admin.socket.io",
+  "https://closeapp.co.il",
+  "https://clicker.co.il",
+  "https://messiah.clicker.co.il",
+  "https://game.clicker.co.il",
+  // הוסף כאן את הדומיין של מערכת המשחק
+];
 
 const Main = (server, app) => {
   try {
-    const io = socket(server, {
+    const io = new Server(server, {
       allowEIO3: true,
+      // --- ביצועים לעומס גבוה ---
+      pingTimeout: 20000,
+      pingInterval: 25000,
+      upgradeTimeout: 10000,
+      maxHttpBufferSize: 1e6, // 1MB מקסימום להודעה
       cors: {
-        origin: [
-          "http://localhost:3068",
-          "https://admin.socket.io",
-          "http://localhost:3000",
-          "http://localhost:5502",
-          "http://127.0.0.1:5500/",
-          "http://127.0.0.1:5500/",
-          "http://127.0.0.1:5501/",
-          "http://127.0.0.1:5502/",
-          "http://127.0.0.1:5503/",
-          "http://127.0.0.1:5504/",
-          "http://127.0.0.1:5505/",
-          "http://127.0.0.1:5506/",
-          "http://127.0.0.1:5507/",
-          "https://closeapp.co.il/racheli/gameRemotes/index.html",
-          "https://closeapp.co.il",
-          "https://clicker.co.il",
-          "https://messiah.clicker.co.il",
-          "https://game.clicker.co.il",
-          "*",
-        ],
+        origin: ALLOWED_ORIGINS,
         methods: ["GET", "POST"],
         credentials: true,
       },
     });
-    // connecting to socket.io admin dashboard
-    instrument(io, {
-      auth: false,
-    });
 
-    io.on("connection", async (socket) => {
-      try {
-        console.log("connection");
+    // socket.io admin dashboard (רק ב-dev)
+    if (process.env.NODE_ENV !== "production") {
+      instrument(io, { auth: false });
+    }
 
-        room(socket, io);
-        game(socket, io);
+    // --- io זמין לכל ה-controllers דרך app ---
+    // חשוב: io ולא socket - io הוא גלובלי, socket הוא per-connection
+    app.set("io", io);
 
-        socket.use(async ([event, ...args], next) => {
-          let user = socket.data.user;
-          if (!user) {
-            user = socket.data.user = {};
-            user.socketId = socket.id;
-            user.phone = args[0].phone;
-            user.room = args[0].gameId;
-            // console.log("user",user);
-          }
-          //takes the event family from event name
-          //for example event "user/test" - the event family will be user
-          // if (!socket.data.user) return next(new Error("unauthorized"));
-          // const eventFamily = event.split("/")[0];
-          next();
-        });
-        //TODO: add socket groups here like the event example
-        // EventSockets(socket, io);
+    io.on("connection", (socket) => {
+      console.log(chalk.gray(`[SOCKET] connected: ${socket.id}`));
 
-        socket.on("disconnect", async () => {
-          console.log("disconnect");
-          socket.disconnect();
-        });
-        socket.on("disconnecting", () => {
-          console.log(socket.rooms); // the Set contains at least the socket ID
-        });
-        socket.on("error", (err) => {
-          console.log("err", err);
-          if (err && err.message === "unauthorized") {
-            socket.disconnect();
-          }
-        });
-        app.set("socket", socket);
-        app.set("io", io);
-      } catch (e) {
+      // הרשמה לחדרים (מערכת המשחק מצטרפת לחדר שלה)
+      roomSocket(socket, io);
+
+      // הצבעות דרך socket ישירות (אופציונלי)
+      gameSocket(socket, io);
+
+      socket.on("disconnect", (reason) => {
+        console.log(chalk.gray(`[SOCKET] disconnected: ${socket.id} (${reason})`));
+      });
+
+      socket.on("error", (err) => {
+        console.error(chalk.red(`[SOCKET ERROR] ${socket.id}`), err.message);
         socket.disconnect();
-        console.log(e);
-      }
+      });
     });
+
+    // --- לוג עומס כל דקה בסביבת production ---
+    if (process.env.NODE_ENV === "production") {
+      setInterval(() => {
+        const count = io.engine.clientsCount;
+        console.log(chalk.yellow(`[STATS] connected sockets: ${count}`));
+      }, 60000);
+    }
+
+    console.log(chalk.bgGreen(" Socket.IO ready "));
   } catch (e) {
-    console.log(e);
+    console.error(chalk.red("[Socket Init Error]"), e);
   }
 };
 
